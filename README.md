@@ -1,2 +1,1 @@
-# dessia-api-client
-Dessia API client
+= Dessia api client
