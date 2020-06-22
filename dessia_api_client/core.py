@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon Nov 20 10:35:32 2017
 
-@author: steven
+
 """
 
 
@@ -121,7 +120,8 @@ class Client:
         self.max_retries = max_retries
         self.retry_interval = retry_interval
 
-    def _get_auth_header(self):
+
+    def generate_token(self):
         if self.token_exp < time.time():
             if (not self.username)|(not self.password):
                 if self.username is None:
@@ -130,7 +130,7 @@ class Client:
                     print('Using {} as email'.format(self.username))
                 if self.password is None:
                     self.password = getpass.getpass('Password for DessIA API:')
-            print('Token expired, reauth')
+            print('No valid token stored, authentication...')
             # Authenticate
             r = requests.post('{}/auth'.format(self.api_url),
                               json={"username": self.username,
@@ -144,26 +144,32 @@ class Client:
                 print('Authentication error: ', r.text)
                 raise AuthenticationError
 
-        auth_header = {'Authorization':'Bearer {}'.format(self.token)}
+    def _get_auth_header(self):
+        self.generate_token()
+
+        auth_header = {'Authorization': 'Bearer {}'.format(self.token)}
         return auth_header
 
     auth_header = property(_get_auth_header)
 
-    def CreateUser(self, email, password, first_name, last_name, is_organization_user=False):
+    def create_user(self, email, password, first_name, last_name):
         data = {'email':email,
                 'password':password,
                 'first_name':first_name,
-                'last_name':last_name,
-                'is_organization_user': is_organization_user}
+                'last_name':last_name}
 
-#        if standalone_user:
-#            data['user_type'] = 'StandAloneUser'
-#        else:
-#            data['user_type'] = 'OrganizationUser'
 
-        r = requests.post('{}/users/create'.format(self.api_url),
+        r = requests.post('{}/users'.format(self.api_url),
                           json=data,
                           proxies=self.proxies)
+
+        return r
+    
+    def send_verification_email(self, email):
+        parameters = {'email': email}
+        r = requests.get('{}/account/send-verification-code'.format(self.api_url),
+                         params=parameters,
+                         proxies=self.proxies)
 
         return r
 
@@ -178,9 +184,9 @@ class Client:
 
         return r
 
-    def VerifyEmail(self, token):
+    def verify_email(self, token):
         data = {'token':token}
-        r = requests.post('{}/account/verify-email'.format(self.api_url),
+        r = requests.post('{}/account/verify'.format(self.api_url),
                           json=data,
                           proxies=self.proxies)
         return r
@@ -204,39 +210,37 @@ class Client:
                           proxies=self.proxies)
         return r
 
-    def JobDetails(self, job_id):
+    def JobDetails(self, job_id:int):
         r = requests.get('{}/jobs/{}'.format(self.api_url, job_id),
                          headers=self.auth_header,
                          proxies=self.proxies)
         return r
 
 
-    def CompanyDetails(self, company_id):
-        r = requests.get('{}/companies/{}'.format(self.api_url, company_id),
+    def get_organization(self, organization_id:int):
+        r = requests.get('{}/organizations/{}'.format(self.api_url, organization_id),
                          headers=self.auth_header,
                          proxies=self.proxies)
         return r
-
-    def UserTeams(self):
-        r = requests.get('{}/teams/list'.format(self.api_url),
-                         headers=self.auth_header,
-                         proxies=self.proxies)
-        return r
-
-    def CreateTeam(self, name, membership=True):
+    
+    def create_organization(self, name:str, type_:str):
         data = {'name':name,
-                'membership':membership}
-        r = requests.post('{}/teams'.format(self.api_url),
+                'type': type_}
+        r = requests.post('{}/organizations'.format(self.api_url),
                           headers=self.auth_header,
                           json=data,
                           proxies=self.proxies)
         return r
 
-    def CreateProject(self, name, owner_type='user', owner_id=None):
-        data = {'name':name,
-                'owner_type': owner_type,
-                'owner_id': owner_id}
-        r = requests.post('{}/projects'.format(self.api_url),
+    def get_workspace(self, workspace_id:int):
+        r = requests.get('{}/workspaces/{}'.format(self.api_url, workspace_id),
+                         headers=self.auth_header,
+                         proxies=self.proxies)
+        return r
+
+    def create_workspace(self, name:str, organization_id:int):
+        data = {'name':name}
+        r = requests.post('{}/organizations/{}/workspaces'.format(self.api_url, organization_id),
                           headers=self.auth_header,
                           json=data,
                           proxies=self.proxies)
@@ -252,57 +256,6 @@ class Client:
                           proxies=self.proxies)
         return r
 
-#    def SubmitJob(self,job_type,input_data,owner_type='user',owner_id=None):
-#        data={'job_type':job_type,'input_data':input_data}
-#        if owner_id:
-#            data['owner_type']=owner_type
-#            data['owner_id']=owner_id
-#        r=requests.post('https://api.software.dessia.tech/jobs/submit',
-#                        headers=self.auth_header,json=data)
-#        return r
-
-
-    def Users(self, users_id):
-        r = requests.post('{}/users'.format(self.api_url),
-                          headers=self.auth_header,
-                          json=users_id,
-                          proxies=self.proxies)
-        return r
-
-    def Teams(self, teams_id):
-        r = requests.post('{}/teams'.format(self.api_url),
-                          headers=self.auth_header,
-                          json=teams_id,
-                          proxies=self.proxies)
-        return r
-
-    def MyTeamsInvitation(self):
-        r = requests.get('{}/account/team_invitations'.format(self.api_url),
-                         headers=self.auth_header,
-                          proxies=self.proxies)
-        return r
-
-
-    def CreateUserCreditOperation(self,
-                                  number_hours,
-                                  user_id=None,
-                                  validated=None,
-                                  price=None,
-                                  caption=''):
-        data = {'number_hours':number_hours,
-                'caption':caption}
-        if user_id is not None:
-            data['user_id'] = user_id
-        if validated is not None:
-            data['validated'] = validated
-        if price is not None:
-            data['price'] = price
-        r = requests.post('{}/quotes/user_credit/create'.format(self.api_url),
-                        headers=self.auth_header,
-                        json=data,
-                        proxies=self.proxies)
-
-        return r
 
     def GetObjectClasses(self):
         r = requests.get('{}/objects/classes'.format(self.api_url),
@@ -316,10 +269,6 @@ class Client:
                          proxies=self.proxies)
         return r
 
-#    def GetClassComposition(self, class_):
-#        r = requests.get('{}/objects/class_composition/{}'.format(self.api_url, class_),
-#                        headers=self.auth_header)
-#        return r
 
     def get_class_attributes(self, class_):
         """

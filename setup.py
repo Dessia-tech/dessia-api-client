@@ -54,12 +54,12 @@ def get_version():
 #import powertransmission
 setup(name='dessia_api_client',
       version=get_version(),
-      description="Python client to interact easily with DessIA API",
+      description="Python client to interact with DessiA API",
       long_description='',
       keywords='',
       url='',
-      author='Steven Masfaraud',
-      author_email='masfaraud@dessia.tech',
+      author='DessiA Technologies',
+      author_email='root@dessia.tech',
       packages=['dessia_api_client'],
-      install_requires=['PyJWT', 'requests'])
+      install_requires=['PyJWT', 'requests', 'matplotlib'])
 
