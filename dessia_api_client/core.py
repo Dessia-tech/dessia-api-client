@@ -14,7 +14,10 @@ import importlib
 import requests
 import matplotlib.pyplot as plt
 from matplotlib.cm import get_cmap
-import dessia_common as dc
+try:
+    import dessia_common as dc
+except ModuleNotFoundError:
+    print('Dessia common module could not be found\n it is required for object handling')
 #import matplotlib.dates as mdates
 
 def StringifyDictKeys(d):
@@ -144,13 +147,12 @@ class Client:
                 print('Authentication error: ', r.text)
                 raise AuthenticationError
 
-    def _get_auth_header(self):
+    @property
+    def auth_header(self):
         self.generate_token()
 
         auth_header = {'Authorization': 'Bearer {}'.format(self.token)}
         return auth_header
-
-    auth_header = property(_get_auth_header)
 
     def create_user(self, email, password, first_name, last_name):
         data = {'email':email,
@@ -313,6 +315,15 @@ class Client:
                          proxies=self.proxies)
         return r
 
+
+    def object_display(self, object_class, object_id):
+        r = requests.get('{}/objects/{}/{}/object_display'.format(self.api_url,
+                                                                  object_class,
+                                                                  object_id),
+                         headers=self.auth_header,
+                         proxies=self.proxies)
+        return r
+
     @retry_n_times
     def create_object_from_python_object(self, obj, owner=None,
                                          embedded_subobjects=True, public=False):
@@ -323,7 +334,7 @@ class Client:
                 'public': public}
         if owner is not None:
             data['owner'] = owner
-        r = requests.post('{}/objects/create'.format(self.api_url),
+        r = requests.post('{}/objects'.format(self.api_url),
                           headers=self.auth_header,
                           json=data,
                           proxies=self.proxies)
@@ -340,7 +351,7 @@ class Client:
                 'public': public}
         if owner is not None:
             data['owner'] = owner
-        r = requests.post('{}/objects/create'.format(self.api_url),
+        r = requests.post('{}/objects'.format(self.api_url),
                           headers=self.auth_header,
                           json=data,
                           proxies=self.proxies)
@@ -740,6 +751,11 @@ class Client:
         ax1.grid(True)
         ax2.grid(True)
         
+    def get_applications(self):
+        return requests.get('{}/applications'.format(self.api_url),
+                             headers=self.auth_header,
+                             proxies=self.proxies)
+        
 class AdminClient(Client):
     def __init__(self,
                   username=None,
@@ -805,6 +821,51 @@ class AdminClient(Client):
         r = requests.get('{}/objects/stats'.format(self.api_url),
                          headers=self.auth_header,
                          proxies=self.proxies)
-        return r    
+        return r
+
+    def update_application(self, application_id:int, 
+                           name:str=None, active:bool=None,
+                           installed_distribution_id:int=None):
+        data = {}
+        if name:
+            data['name'] = name
+        if active:
+            data['active'] = active
+        if installed_distribution_id:
+            data['installed_distribution_id'] = installed_distribution_id
+        if not data:
+            print('Empty data, no need to fire a request')
+            return None
+        
+        return requests.post('{}/applications/{}'.format(self.api_url, application_id),
+                             headers=self.auth_header,
+                             proxies=self.proxies,
+                             json=data)
+
+    def delete_application(self, application_id:int):
+        return requests.delete('{}/applications/{}'.format(self.api_url, application_id),
+                               headers=self.auth_header,
+                               proxies=self.proxies)
+
     
+    def upload_file_distribution(self, distribution_filepath):
+        files = {'file': open(distribution_filepath, 'rb')}
+        return requests.post('{}/file-application-distributions'.format(self.api_url),
+                             headers=self.auth_header,
+                             proxies=self.proxies,
+                             files=files)
+
+    def create_git_distribution(self, http_url, username, token):
+        data = {'http_url': http_url,
+                'username': username,
+                'token': token}
+        return requests.post('{}/git-application-distributions'.format(self.api_url),
+                             headers=self.auth_header,
+                             proxies=self.proxies,
+                             json=data)
+
     
+    def delete_distribution(self, distribution_id:int):
+        return requests.delete('{}/application-distributions/{}'.format(self.api_url, distribution_id),
+                               headers=self.auth_header,
+                               proxies=self.proxies)
