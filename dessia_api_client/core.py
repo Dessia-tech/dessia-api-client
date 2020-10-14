@@ -19,6 +19,8 @@ try:
 except ModuleNotFoundError:
     print('Dessia common module could not be found\n it is required for object handling')
 #import matplotlib.dates as mdates
+import string
+import random
 
 def StringifyDictKeys(d):
     if type(d) == list or type(d) == tuple:
@@ -89,7 +91,7 @@ class LowerOrEqualFilter(Filter):
 class GreaterFilter(Filter):
     def __init__(self, attribute, value):
         Filter.__init__(self, attribute, 'gt', value)
-        
+
 class GreaterOrEqualFilter(Filter):
     def __init__(self, attribute, value):
         Filter.__init__(self, attribute, 'gte', value)
@@ -328,10 +330,14 @@ class Client:
     def create_object_from_python_object(self, obj, owner=None,
                                          embedded_subobjects=True, public=False):
         
-        data = {'object': {'class': '{}.{}'.format(obj.__class__.__module__, obj.__class__.__name__),
-                           'json': StringifyDictKeys(obj.to_dict())},
-                'embedded_subobjects': embedded_subobjects,
-                'public': public}
+        data = {
+            'object': {
+                'object_class': '{}.{}'.format(obj.__class__.__module__,
+                                        obj.__class__.__name__),
+                'json': StringifyDictKeys(obj.to_dict())
+            },
+            'embedded_subobjects': embedded_subobjects,
+            'public': public}
         if owner is not None:
             data['owner'] = owner
         r = requests.post('{}/objects'.format(self.api_url),
@@ -340,12 +346,11 @@ class Client:
                           proxies=self.proxies)
         return r
 
-
     @retry_n_times
     def create_object_from_object_dict(self, object_dict, owner=None,
                                        embedded_subobjects=True, public=False):
         
-        data = {'object': {'class': object_dict['object_class'],
+        data = {'object': {'object_class': object_dict['object_class'],
                            'json': StringifyDictKeys(object_dict)},
                 'embedded_subobjects': embedded_subobjects,
                 'public': public}
@@ -357,11 +362,10 @@ class Client:
                           proxies=self.proxies)
         return r
 
-
     @retry_n_times
     def ReplaceObject(self, object_class, object_id, new_object,
                       embedded_subobjects = False, owner=None):
-        data = {'object': {'class': object_class,
+        data = {'object': {'object_class': object_class,
                            'json': StringifyDictKeys(new_object.to_dict())},
                 'embedded_subobjects' : embedded_subobjects}
         if owner is not None:
@@ -381,10 +385,31 @@ class Client:
         return r
 
     def delete_object(self, object_class, object_id):
-        r = requests.delete('{}/objects/{}/{}/delete'.format(self.api_url, object_class, object_id),
+        r = requests.delete('{}/objects/{}/{}'.format(self.api_url, object_class, object_id),
                             headers=self.auth_header,
                             proxies=self.proxies)
         return r
+
+    def delete_all_objects(self):
+        classes = self.GetObjectClasses().json()
+        objects = []
+        for classname in classes:
+            class_objects = self.GetAllClassObjects(classname).json()
+            if class_objects:
+                objects.extend(class_objects)
+        validator = ''.join(random.choices(string.ascii_uppercase, k=6))
+        print('This will delete all {} objects'.format(len(objects)))
+        print('Confirm by typing in following code : {}'.format(validator))
+        print('Let empty to abort.')
+        confirm = input()
+        if confirm == validator:
+            for object_ in objects:
+                self.delete_object(object_['object_class'], object_['id'])
+            print('All {} objects successfully deleted'.format(len(objects)))
+        elif not confirm:
+            print('Deletion aborted')
+        else:
+            print('Input did not match validator. Deletion aborted')
 
     # def DeleteAllSTL(self):
     #     r = requests.delete('{}/objects/stl/delete_all'.format(self.api_url),
@@ -755,26 +780,31 @@ class Client:
         return requests.get('{}/applications'.format(self.api_url),
                              headers=self.auth_header,
                              proxies=self.proxies)
-        
+
+    def my_network(self):
+        return requests.get('{}/account/network'.format(self.api_url),
+                             headers=self.auth_header,
+                             proxies=self.proxies)
+
 class AdminClient(Client):
-    def __init__(self,
-                  username=None,
-                  password=None,
-                  token=None,
-                  proxies=None,
+    def __init__(self, username=None, password=None, token=None, proxies=None,
                   api_url='https://api.platform.dessia.tech',
-                  max_retries=10,
-                  retry_interval=2):
+                  max_retries=10, retry_interval=2):
         Client.__init__(self, username=username, password=password,
                         token=token, proxies=proxies, api_url=api_url,
                         max_retries=max_retries, retry_interval=retry_interval)
-        
+
+    def status(self):
+        r = requests.get('{}/admin/status'.format(self.api_url),
+                         headers=self.auth_header,
+                         proxies=self.proxies)
+        return r
+
     def import_errors(self):
         r = requests.get('{}/admin/import-errors'.format(self.api_url),
                          headers=self.auth_header,
                          proxies=self.proxies)
         return r
-        
     
     def refresh_models(self):
         r = requests.get('{}/admin/models/refresh'.format(self.api_url),
@@ -869,3 +899,40 @@ class AdminClient(Client):
         return requests.delete('{}/application-distributions/{}'.format(self.api_url, distribution_id),
                                headers=self.auth_header,
                                proxies=self.proxies)
+    
+    def update_user(self, user_id:int, 
+                    first_name:str=None,
+                    last_name:str=None,
+                    active:bool=None,
+                    admin:bool=None):
+        data = {}
+        for attr_name, attr_value in [('first_name', first_name),
+                                      ('last_name', last_name),
+                                      ('active', active),
+                                      ('admin', admin)]:
+            if attr_value:
+                data['attr_name'] = attr_value
+                
+        if not data:
+            print('Empty data, no need to fire a request')
+            return None
+        
+        return requests.post('{}/admin/users/{}'.format(self.api_url, user_id),
+                             headers=self.auth_header,
+                             proxies=self.proxies,
+                             json=data)
+    
+    
+    def add_computation_usage(self, owner:str, time:float):
+        data = {'owner': owner,
+                'time': time}
+        
+        return requests.post('{}/admin/computation-usage'.format(self.api_url),
+                             headers=self.auth_header,
+                             proxies=self.proxies,
+                             json=data)
+    
+    def stats(self):
+        return requests.get('{}/admin/stats'.format(self.api_url),
+                             headers=self.auth_header,
+                             proxies=self.proxies)
